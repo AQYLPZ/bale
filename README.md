@@ -22,6 +22,7 @@
 - [已知限制](#已知限制)
 - [排障](#排障)
 - [卸载](#卸载)
+- [依赖精简说明](#依赖精简说明)
 - [开发与测试](#开发与测试)
 - [许可](#许可)
 
@@ -148,12 +149,16 @@ venv/Scripts/python.exe -m pip install -r requirements.txt
 venv/bin/python -m pip install -r requirements.txt
 ```
 
-`requirements.txt` 固定的是实测通过的版本（`headroom-ai[code]==0.42.0` + `onnxruntime`）。也可以手动安装：
+`requirements.txt` 使用仓库内重打包的精简 wheel（`vendor/wheels/headroom_ai-0.42.0.post1-*.whl`，base 依赖已从 113 条收缩到 7 条，见「依赖精简说明」）。也可以手动安装：
 
 ```bash
-venv/Scripts/python.exe -m pip install "headroom-ai[code]" onnxruntime   # Windows
-venv/bin/python -m pip install "headroom-ai[code]" onnxruntime            # macOS / Linux
+venv/Scripts/python.exe -m pip install --find-links ./vendor/wheels "headroom-ai[code]==0.42.0.post1"   # Windows
+venv/bin/python -m pip install --find-links ./vendor/wheels "headroom-ai[code]==0.42.0.post1"            # macOS / Linux
 ```
+
+> 该 wheel 是 `cp310-abi3-win_amd64`，仅适用于 Windows x64。macOS / Linux 需基于对应平台的原始 wheel，调整 `tools/repack/repack.py` 中的 `TAG` / `OUT_NAME` 后重新打包。
+>
+> 通过 npm 安装插件时，npm 包不包含 `vendor/wheels/`（约 15 MB）。需要把 wheel 复制到 `node_modules/headroom-auto/vendor/wheels/`，或直接在仓库内按上面的命令安装。
 
 > 不要装 `[ml]` 额外组 —— 它会把值得注意的依赖树拖进来，且本插件的 text 压缩默认停用。
 
@@ -229,6 +234,12 @@ headroom-auto/
 │   └── unit.mjs            # 单元 / 集成测试（需要 sidecar 在运行）
 ├── examples/
 │   └── cordis.patch.example.yml
+├── docs/
+│   └── dependency-slimming-plan.md   # Python 依赖精简（重打包 wheel）方案
+├── tools/
+│   └── repack/             # 重打包脚本、原始 wheel 信息、修改声明
+├── vendor/
+│   └── wheels/             # 精简后的 headroom_ai-0.42.0.post1 wheel
 ├── cordis.patch.yml        # 插件自带的 bundle 配置
 ├── package.json
 ├── requirements.txt
@@ -649,6 +660,50 @@ rm -rf <PROFILE>/.headroom
 压缩算法来自 [headroom-ai](https://pypi.org/project/headroom-ai/) 项目（LogCompressor / SmartCrusher / DiffCompressor / SearchCompressor / ContentRouter）。
 
 本插件做的是把它接到 DSH 的钩子上，并针对 Agent 工具输出的特点做了适配：内容类型判定、关键行提取、清零护栏、熔断、原文存储与取回。
+
+---
+
+## 依赖精简说明
+
+### 为什么要重打包
+
+上游 `headroom-ai` 0.42.0 把 LLM 代理栈（`litellm` 全家桶）、`onnxruntime` / `numpy`、`boto3` / `botocore` 等写进了 base 依赖，合计约 254 MB。本插件只用它的压缩功能，这些包在 `log/json/code/diff/search` 路径上从不被 import。
+
+处理方式是重打包 wheel：只修改 `METADATA` 的 `Requires-Dist` 与 `Version`，同步重算 `RECORD`，包内 Python 源码、`_core.pyd`（Rust 压缩本体）与 `headroom/ccr/` 均未改动。产物在 `vendor/wheels/`，版本号 `0.42.0.post1` 用于区分上游原版；SBOM 未修改，对应上游 0.42.0 原版。重打包工具与修改声明见 [`tools/repack/`](tools/repack/)，完整方案与基线见 [`docs/dependency-slimming-plan.md`](docs/dependency-slimming-plan.md)。
+
+实测：venv 从 632 MB / 78 dist 降到 247 MB / 23 dist；5 种压缩的 sha256 与上游 0.42.0 基线逐项一致。
+
+### 必须显式保留 `httpx`（最关键）
+
+上游 METADATA 中 `httpx` 只出现在 `dev` / `mcp` / `proxy` 三个 extra 分支里，当前能装上是因为 `litellm` 顺带带入。删掉 `litellm` 后如果不显式声明，`httpx` 会一起消失，而压缩路径硬依赖它：
+
+```text
+smart_crusher.py → ccr.tool_injection → ccr/__init__.py
+                 → ccr/batch_processor.py → import httpx
+```
+
+实测屏蔽 `httpx` 后 json 压缩直接 `ImportError`。因此精简后的 7 条 base 依赖是：
+
+```text
+httpx>=0.24.0
+pydantic>=2.0.0
+click>=8.3.3
+rich>=13.0.0
+opentelemetry-api>=1.24.0
+tree-sitter-language-pack>=0.10.0,<1.0
+tree-sitter>=0.25.2,<0.27
+```
+
+`anyio` / `certifi` / `httpcore` / `idna` 由 `httpx` 自身声明，`typing_extensions` 由 `opentelemetry-api` 传递引入，均无需手写。
+
+### 上游发新版时如何重打靶
+
+1. 从 PyPI 下载新版本 wheel，把 URL / 大小 / sha256 记录到 `tools/repack/SOURCE.txt`；
+2. 检查新版 base 依赖是否仍包含 litellm 全家桶，确认压缩路径的真实 import 没有新增包；
+3. 更新 `tools/repack/repack.py` 中的 `OLD_VERSION` / `NEW_VERSION`；
+4. 重新打包：`python tools/repack/repack.py --src <新版 wheel> --out-dir vendor/wheels`；
+5. 在隔离 venv 中跑 `docs/dependency-slimming-plan.md` §1.4 的 5 种压缩基线，确认 sha256 一致或明确记录算法变更；
+6. 更新 `requirements.txt` 的版本锁定，并重新生成生产 venv。
 
 ---
 

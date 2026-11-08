@@ -1,0 +1,16 @@
+headroom-ai 0.42.0 原始产物信息（本次重打包的输入）
+
+wheel URL:
+  https://files.pythonhosted.org/packages/21/21/233710bc313c07cf652ed4234574f8906becdbe22b559413394e775fd8eb/headroom_ai-0.42.0-cp310-abi3-win_amd64.whl
+wheel 文件名:
+  headroom_ai-0.42.0-cp310-abi3-win_amd64.whl
+wheel 大小:
+  15724229 bytes
+wheel sha256:
+  df31ddff684f8a8f1001d3ab2b04c6b508dfc32e6d7ff3464cf669b7085deb63
+
+sdist（备用，本次未使用）:
+  https://files.pythonhosted.org/packages/c7/8c/90733323fd1f65cc815e3bc0722823b263fcd04cb8ae1f4b3faab1e4dc5a/headroom_ai-0.42.0.tar.gz
+
+下载时间:
+  2026-11-08
