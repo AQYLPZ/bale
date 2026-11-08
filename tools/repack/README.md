@@ -12,9 +12,10 @@ Python 源码与 _core.pyd 二进制未做任何修改。
 ## 为什么需要重打包
 
 headroom-ai 0.42.0 的 base 依赖包含 litellm 全家桶（litellm、openai、
-tokenizers、huggingface-hub、boto3/botocore 等）以及 onnxruntime/numpy。
-这些包只服务于 proxy / ml / text 等未启用的功能，在 log/json/code/diff/search
-压缩路径上从不被 import，却使 venv 多占约 254 MB。
+tokenizers、huggingface-hub、hf-xet、boto3/botocore 等），另有 ast-grep-cli
+会往 Scripts/ 写两个各约 50 MB 的二进制。这些包只服务于 proxy / ml / text 等
+未启用的功能，在 log/json/code/diff/search 压缩路径上从不被 import，却使 venv
+多占约 355 MB（其中 onnxruntime/numpy 另有 81 MB 来自原 requirements.txt 显式声明）。
 
 重打包不修改任何 Python 源码，只收缩依赖闭包。
 

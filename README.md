@@ -149,7 +149,7 @@ venv/Scripts/python.exe -m pip install -r requirements.txt
 venv/bin/python -m pip install -r requirements.txt
 ```
 
-`requirements.txt` 使用仓库内重打包的精简 wheel（`vendor/wheels/headroom_ai-0.42.0.post1-*.whl`，base 依赖已从 113 条收缩到 7 条，见「依赖精简说明」）。也可以手动安装：
+`requirements.txt` 使用仓库内重打包的精简 wheel（`vendor/wheels/headroom_ai-0.42.0.post1-*.whl`，base 依赖已从 13 条收缩到 7 条，见「依赖精简说明」）。也可以手动安装：
 
 ```bash
 venv/Scripts/python.exe -m pip install --find-links ./vendor/wheels "headroom-ai[code]==0.42.0.post1"   # Windows
@@ -667,11 +667,11 @@ rm -rf <PROFILE>/.headroom
 
 ### 为什么要重打包
 
-上游 `headroom-ai` 0.42.0 把 LLM 代理栈（`litellm` 全家桶）、`onnxruntime` / `numpy`、`boto3` / `botocore` 等写进了 base 依赖，合计约 254 MB。本插件只用它的压缩功能，这些包在 `log/json/code/diff/search` 路径上从不被 import。
+上游 `headroom-ai` 0.42.0 的 base 依赖把 LLM 代理栈（`litellm`、`openai`、`tokenizers`、`huggingface-hub`、`hf-xet`、`boto3` / `botocore` 等）一并带了进来，另有一个 `ast-grep-cli` 会往 `Scripts/` 写两个各 50 MB 的二进制。这些包在 `log/json/code/diff/search` 压缩路径上从不被 import，却让 venv 多占约 355 MB。
 
 处理方式是重打包 wheel：只修改 `METADATA` 的 `Requires-Dist` 与 `Version`，同步重算 `RECORD`，包内 Python 源码、`_core.pyd`（Rust 压缩本体）与 `headroom/ccr/` 均未改动。产物在 `vendor/wheels/`，版本号 `0.42.0.post1` 用于区分上游原版；SBOM 未修改，对应上游 0.42.0 原版。重打包工具与修改声明见 [`tools/repack/`](tools/repack/)，完整方案与基线见 [`docs/dependency-slimming-plan.md`](docs/dependency-slimming-plan.md)。
 
-实测：venv 从 632 MB / 78 dist 降到 247 MB / 23 dist；5 种压缩的 sha256 与上游 0.42.0 基线逐项一致。
+实测：venv 从 602 MB / 78 dist 降到 236 MB / 23 dist（`du` 口径下为 632 MB → 240 MB）；5 种压缩的 sha256 与上游 0.42.0 基线逐项一致。
 
 ### 必须显式保留 `httpx`（最关键）
 

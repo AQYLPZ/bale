@@ -8,10 +8,15 @@
 ## 0. 目标与边界
 
 ```
-现状：venv 632 MB / 78 个 dist
+现状：venv 632 MB / 78 个 dist（du 口径）
 目标：venv < 450 MB（预期 ~400 MB）/ dist < 40（预期 ~30）
 方式：重打包 headroom_ai wheel，从 METADATA 的 Requires-Dist 移除无关依赖
 ```
+
+> **执行结果（2026-11-08 实测）**：实际达成 venv 632 MB → 240 MB、dist 78 → 23，
+> 优于预期的 ~400 MB。原因是 litellm 之外的 `ast-grep-cli` 在 `Scripts/` 下留了
+> 两个各 50 MB 的二进制（`sg.exe` / `ast-grep.exe`），随依赖移除一并消失。
+> 本文档下文的「预期 ~400 MB」等数值保留为制定计划时的原始估算，未回改。
 
 **要改的**：仅 `headroom_ai-0.42.0.dist-info/METADATA` 中的 `Requires-Dist` 与 `Version`，以及随之更新的 `RECORD`。
 
