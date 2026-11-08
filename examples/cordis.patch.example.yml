@@ -1,0 +1,32 @@
+# headroom-auto 的 profile 级配置示例。
+#
+# 用法：把本段追加到 <PROFILE>/cordis.patch.yml 末尾，并把所有 <PROFILE>
+# 替换成 profile 的绝对路径（例如 D:/DSH/.dsh/profiles/desktop）。
+#
+# 为什么必须写绝对路径：插件默认从 lib/ 上两级推导 venv 与 sidecar 位置，
+# 在 node_modules 真实目录下会算错；而插件是 fail-open 的，算错时不会报错，
+# 只会静默地不压缩。
+- id: headroom-auto
+  name: headroom-auto
+  config:
+    enabled: true
+    minChars: 8192
+    maxChars: 33554432
+    tools: ['ops_bash', 'bash', 'pwsh', 'web_fetch', 'run_code']
+    protectTools: ['read', 'edit', 'write', 'grep', 'glob',
+                   'ops_read_files', 'ops_inspect_local_file', 'ops_edit_file',
+                   'ops_write_file', 'ops_grep', 'ops_glob', 'ops_stat',
+                   'ops_read_table', 'ops_read_docx', 'ops_read_pdf']
+    kinds: ['log', 'json', 'code', 'diff', 'search', 'generic']
+    kindsAreOpen: true
+    sidecarUrl: 'http://127.0.0.1:8797'
+    timeoutMs: 15000
+    replaceMode: replace
+
+    # 以下五项是运行时数据与 Python 环境的位置，全部放在 .headroom/ 下，
+    # 不要放进 node_modules（pnpm 更新会整目录替换）。
+    sidecarPython: '<PROFILE>/.headroom/venv/Scripts/pythonw.exe'
+    sidecarScript: '<PROFILE>/node_modules/headroom-auto/sidecar/sidecar.py'
+    storeDir: '<PROFILE>/.headroom/store'
+    wsDir: '<PROFILE>/.headroom/headroom_ws'
+    logFile: '<PROFILE>/.headroom/logs/headroom-auto.log'

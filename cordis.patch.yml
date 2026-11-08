@@ -1,0 +1,26 @@
+- insert:
+    - id: headroom-auto
+      name: 'headroom-auto'
+      config:
+        enabled: true
+        minChars: 8192
+        maxChars: 33554432
+        # ops_bash 等价于 pwsh，允许压缩；其余 ops_* 都是读/写/搜索类精确内容，
+        # 放 protectTools 保护（见下）。
+        tools: ['ops_bash', 'bash', 'pwsh', 'web_fetch', 'run_code']
+        # ops 插件的读/写/搜索类工具等价于官方 read/edit/write/grep/glob，
+        # 输出必须逐字精确（行号、路径、代码），一律不压。
+        protectTools: ['read', 'edit', 'write', 'grep', 'glob',
+                       'ops_read_files', 'ops_inspect_local_file', 'ops_edit_file',
+                       'ops_write_file', 'ops_grep', 'ops_glob', 'ops_stat',
+                       'ops_read_table', 'ops_read_docx', 'ops_read_pdf']
+        # text 已关闭：Kompress 实测压缩比 ~97%（几乎无收益），单次耗时 8-27s，
+        # 常触发 15s 超时 abort，只贡献延迟不贡献压缩率。
+        # diff / search 是 2026-11-06 新增：借用项目自带的轻量正则检测器
+        # (content_detector.detect_content_type) 识别，不动 ContentRouter 整体。
+        # generic 是新增：非结构化的普通大文本，走行级抽样（保头尾、折叠中间）
+        # kindsAreOpen 为 true 时此列表仅作参考，实际以 sidecar 判定为准
+        kinds: ['log', 'json', 'code', 'diff', 'search', 'generic']
+        sidecarUrl: 'http://127.0.0.1:8797'
+        timeoutMs: 15000
+        replaceMode: replace

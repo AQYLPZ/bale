@@ -1,0 +1,25 @@
+# dependencies
+node_modules/
+
+# runtime data
+.headroom/
+venv/
+store/
+headroom_ws/
+hf_home/
+logs/
+*.log
+
+# build artifacts
+*.tgz
+
+# python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

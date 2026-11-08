@@ -1,0 +1,49 @@
+{
+  "name": "headroom-auto",
+  "version": "0.1.0",
+  "description": "DSH plugin that compresses large tool outputs before they enter the model context, with hash-based retrieval of the original text.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/",
+    "sidecar/sidecar.py",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "license": "MIT",
+  "author": "AQYLPZ",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AQYLPZ/headroom-auto.git"
+  },
+  "homepage": "https://github.com/AQYLPZ/headroom-auto#readme",
+  "bugs": {
+    "url": "https://github.com/AQYLPZ/headroom-auto/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "agent",
+    "context-window",
+    "compression",
+    "headroom"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "check": "node --check lib/config.js && node --check lib/index.js && node --check lib/sidecar-client.js",
+    "check:py": "python -m py_compile sidecar/sidecar.py",
+    "test": "node tests/unit.mjs"
+  },
+  "private": true
+}
