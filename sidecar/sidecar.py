@@ -70,7 +70,7 @@ WS.mkdir(parents=True, exist_ok=True)
 _compressors = {}      # kind -> callable(text, language) -> str
 _comp_lock = threading.RLock()   # 可重入：do_compress 的压缩临界区内会再进 _get_compressor
 _started = time.time()
-_VERSION = "0.1.2"
+_VERSION = "0.1.3"
 
 _TS_RE = re.compile(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}[ T]\d{1,2}:\d{2}|\d{2}:\d{2}:\d{2}")
 
