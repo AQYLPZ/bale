@@ -70,7 +70,7 @@ WS.mkdir(parents=True, exist_ok=True)
 _compressors = {}      # kind -> callable(text, language) -> str
 _comp_lock = threading.RLock()   # 可重入：do_compress 的压缩临界区内会再进 _get_compressor
 _started = time.time()
-_VERSION = "0.1.0"
+_VERSION = "0.1.2"
 
 _TS_RE = re.compile(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}[ T]\d{1,2}:\d{2}|\d{2}:\d{2}:\d{2}")
 
@@ -82,6 +82,34 @@ def log(evt):
             f.write(line + "\n")
     except Exception:
         pass
+
+
+_SCRIPT_PATH = os.path.abspath(__file__)
+_SCRIPT_HASH = ""
+_WATCH_SECS = 10.0
+
+
+def script_hash():
+    try:
+        with open(_SCRIPT_PATH, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except OSError:
+        return ""
+
+
+def watch_script():
+    """脚本被 pnpm 更新替换后主动退出，让插件拉起新代码。"""
+    while True:
+        time.sleep(_WATCH_SECS)
+        current = script_hash()
+        if not current or current == _SCRIPT_HASH:
+            continue
+        # 避开解压到一半的中间状态：1 秒后仍然不同才认定更新完成
+        time.sleep(1)
+        again = script_hash()
+        if again and again != _SCRIPT_HASH:
+            log({"event": "self-exit", "reason": "script-changed", "pid": os.getpid()})
+            os._exit(0)
 
 
 def _get_compressor(kind):
@@ -864,6 +892,9 @@ def main():
     args = ap.parse_args()
     srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     srv.daemon_threads = True
+    global _SCRIPT_HASH
+    _SCRIPT_HASH = script_hash()
+    threading.Thread(target=watch_script, daemon=True).start()
     log({"event": "start", "port": args.port, "pid": os.getpid(), "version": _VERSION})
     print(f"headroom sidecar listening on 127.0.0.1:{args.port}", flush=True)
     try:

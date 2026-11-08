@@ -1,3 +1,3 @@
-# Python 3.12；版本为实测通过组合，升级前请先跑 tests/unit.mjs
+# Python 3.10–3.14（实测 3.12.14 与 3.14.7）；版本为实测通过组合，升级前请先跑 tests/unit.mjs
 headroom-ai[proxy,mcp,code]==0.42.0
 onnxruntime

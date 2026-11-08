@@ -67,7 +67,7 @@ Agent 跑一次 `npm run build`、`pytest -v`、`docker logs`，输出动辄几�
 | 进程 | 职责 | 语言 |
 |---|---|---|
 | DSH 插件 | 钩子挂载、判定、替换、注册 `headroom_retrieve` 工具 | Node.js (ESM) |
-| sidecar | 实际压缩算法 + 原文存储 + HTTP 服务 | Python 3.12 |
+| sidecar | 实际压缩算法 + 原文存储 + HTTP 服务 | Python 3.10–3.14 |
 
 这样拆分的原因：压缩算法（LogCompressor、SmartCrusher 等）来自 `headroom-ai` Python 库，而 DSH 插件跑在 Node 里。sidecar 单进程常驻，压缩器懒加载后常驻内存，避免每次调用都付出冷启动代价。
 
@@ -125,7 +125,7 @@ CRITICAL_PATTERNS = [
 
 - DSH（DeepSeek Harness）桌面版或 CLI
 - Node.js ≥ 20
-- Python 3.12（sidecar 用）
+- Python 3.10–3.14（sidecar 用，实测 3.12.14 与 3.14.7）
 - Windows / macOS / Linux
 
 ### 安装步骤
@@ -162,7 +162,7 @@ venv/bin/python -m pip install "headroom-ai[proxy,mcp,code]" onnxruntime        
 ```bash
 # 在 headroom-auto 目录内；npm pack 会按 package.json 的 files 白名单打包
 npm pack
-# 生成 headroom-auto-0.1.0.tgz（内部根目录为 package/，这是 pnpm 能识别的格式）
+# 生成 headroom-auto-0.1.2.tgz（内部根目录为 package/，这是 pnpm 能识别的格式）
 ```
 
 把 tgz 放到 profile 的 `vendor/` 目录，然后在 profile 的 `package.json` 里添加：
@@ -170,7 +170,7 @@ npm pack
 ```json
 {
   "dependencies": {
-    "headroom-auto": "file:./vendor/headroom-auto-0.1.0.tgz"
+    "headroom-auto": "file:./vendor/headroom-auto-0.1.2.tgz"
   },
   "dsh": {
     "profile": {
@@ -181,6 +181,8 @@ npm pack
 ```
 
 执行 `pnpm install`。
+
+> **也可以直接从 npm 安装**：跳过上面的 `npm pack`，在 profile 的 `package.json` 里把依赖写成 `"headroom-auto": "^0.1.2"`，再执行 `pnpm install`。npm 包内已包含 `lib/`、`sidecar/sidecar.py`、`cordis.patch.yml` 和 `requirements.txt`；Python 依赖仍需按第 2 步单独安装，从 npm 装时对应路径是 `node_modules/headroom-auto/requirements.txt`。
 
 **4. 配置绝对路径**
 
@@ -206,7 +208,7 @@ sidecar 会由插件在启动时自动拉起（`pythonw` 无窗口）。验证�
 
 ```bash
 curl http://127.0.0.1:8797/health
-# {"ok": true, "version": "0.1.0", "uptime_s": 12.3, "compressors_loaded": {}, ...}
+# {"ok": true, "version": "0.1.2", "uptime_s": 12.3, "compressors_loaded": {}, ...}
 ```
 
 `compressors_loaded` 初始为空是正常的 —— 压缩器懒加载，第一次用到才载入。
@@ -330,7 +332,7 @@ sidecar 只绑定 `127.0.0.1`，不对外暴露。
 ```json
 {
   "ok": true,
-  "version": "0.1.0",
+  "version": "0.1.2",
   "uptime_s": 1069.4,
   "compressors_loaded": {"log": true, "generic": true},
   "text_model_ready": false,
@@ -533,6 +535,14 @@ LogCompressor 在纯 INFO 日志上的行为是**清零**：
 ```
 修复后: 3029 ms / 0 ms / 0 ms / 0 ms / 1 ms
 ```
+
+### ⚠️ 更新后旧 sidecar 自动退出
+
+sidecar 是 `detached` 常驻进程，`pnpm install` 只替换磁盘文件，不会影响已加载进内存的旧代码。如果更新后只重启 DSH，插件的健康探测会直接复用旧进程，新代码永远不生效。
+
+现在的做法：sidecar 启动时记录自身脚本的 SHA-256，之后每 10 秒重新计算一次。文件被替换后哈希变化，进程写一条 `self-exit` 日志并退出；插件的 `compressWithEnsure` 在下一次连接失败时自动拉起新进程，DSH 重启时也会重新拉起。
+
+因此更新流程里不再需要手动结束进程。代价是更新落盘后的 10 秒窗口内，可能有某次压缩请求失败——按 fail-open 原样放行，不影响工具调用本身。
 
 ---
 
