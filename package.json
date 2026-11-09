@@ -1,6 +1,6 @@
 {
   "name": "bale",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "DSH plugin that compresses large tool outputs before they enter the model context, with hash-based retrieval of the original text.",
   "type": "module",
   "main": "lib/index.js",
@@ -13,6 +13,7 @@
     "sidecar/sidecar.py",
     "cordis.patch.yml",
     "requirements.txt",
+    "vendor/wheels/",
     "README.md"
   ],
   "dsh": {

@@ -127,7 +127,7 @@ CRITICAL_PATTERNS = [
 - DSH（DeepSeek Harness）桌面版或 CLI
 - Node.js ≥ 20
 - Python 3.10–3.14（sidecar 用，实测 3.12.14 与 3.14.7）
-- Windows / macOS / Linux
+- Windows x64（预置 wheel 仅此平台；macOS / Linux 需按 `tools/repack/README.md` 自行重打包）
 
 ### 安装步骤
 
@@ -158,7 +158,15 @@ venv/bin/python -m pip install --find-links ./vendor/wheels "headroom-ai[code]==
 
 > 该 wheel 是 `cp310-abi3-win_amd64`，仅适用于 Windows x64。macOS / Linux 需基于对应平台的原始 wheel，调整 `tools/repack/repack.py` 中的 `TAG` / `OUT_NAME` 后重新打包。
 >
-> 通过打包安装插件时，tgz 不包含 `vendor/wheels/`（约 15 MB）。需要把 wheel 复制到 `node_modules/bale/vendor/wheels/`，或直接在仓库内按上面的命令安装。
+> 从 0.1.4 起，tgz 已包含 `vendor/wheels/`（约 15 MB，tgz 总计约 14.7 MB）。装完插件后可直接：
+>
+> ```bash
+> venv/Scripts/python.exe -m pip install -r node_modules/bale/requirements.txt   # Windows
+> venv/bin/python -m pip install -r node_modules/bale/requirements.txt           # macOS / Linux
+> ```
+>
+> `--find-links` 相对 `requirements.txt` 所在目录解析，无需 `cd`。
+> 传递依赖（httpx / pydantic / opentelemetry-api 等）仍需联网从 PyPI 获取。
 
 > 不要装 `[ml]` 额外组 —— 它会把值得注意的依赖树拖进来，且本插件的 text 压缩默认停用。
 
@@ -167,7 +175,7 @@ venv/bin/python -m pip install --find-links ./vendor/wheels "headroom-ai[code]==
 ```bash
 # 在仓库根目录内；npm pack 会按 package.json 的 files 白名单打包
 npm pack
-# 生成 bale-0.1.3.tgz（内部根目录为 package/，这是 pnpm 能识别的格式）
+# 生成 bale-0.1.4.tgz（内部根目录为 package/，这是 pnpm 能识别的格式）
 ```
 
 把 tgz 放到 profile 的 `vendor/` 目录，然后在 profile 的 `package.json` 里添加：
@@ -175,7 +183,7 @@ npm pack
 ```json
 {
   "dependencies": {
-    "bale": "file:./vendor/bale-0.1.3.tgz"
+    "bale": "file:./vendor/bale-0.1.4.tgz"
   },
   "dsh": {
     "profile": {
@@ -187,7 +195,7 @@ npm pack
 
 执行 `pnpm install`。
 
-> **本项目未发布到 npm**（npm 上的 `bale` 是另一个包，当前 0.2.0），请使用上面的本地 tgz 方式安装。tgz 内已包含 `lib/`、`sidecar/sidecar.py`、`cordis.patch.yml` 和 `requirements.txt`；Python 依赖仍需按第 2 步单独安装，安装后对应路径是 `node_modules/bale/requirements.txt`。
+> **本项目未发布到 npm**（npm 上的 `bale` 是另一个包，当前 0.2.0），请使用上面的本地 tgz 方式安装。tgz 内已包含 `lib/`、`sidecar/sidecar.py`、`cordis.patch.yml`、`requirements.txt` 和 `vendor/wheels/`；Python 依赖仍需按第 2 步单独安装，安装后对应路径是 `node_modules/bale/requirements.txt`。
 
 **4. 配置绝对路径**
 
@@ -213,7 +221,7 @@ sidecar 会由插件在启动时自动拉起（`pythonw` 无窗口）。验证�
 
 ```bash
 curl http://127.0.0.1:8797/health
-# {"ok": true, "version": "0.1.3", "uptime_s": 12.3, "compressors_loaded": {}, ...}
+# {"ok": true, "version": "0.1.4", "uptime_s": 12.3, "compressors_loaded": {}, ...}
 ```
 
 `compressors_loaded` 初始为空是正常的 —— 压缩器懒加载，第一次用到才载入。
@@ -343,7 +351,7 @@ sidecar 只绑定 `127.0.0.1`，不对外暴露。
 ```json
 {
   "ok": true,
-  "version": "0.1.3",
+  "version": "0.1.4",
   "uptime_s": 1069.4,
   "compressors_loaded": {"log": true, "generic": true},
   "text_model_ready": false,
