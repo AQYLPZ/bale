@@ -223,6 +223,9 @@ python "E:/AQYLPZ_WorkMenu/工作脚本/headroom依赖精简/阶段C-基线对�
 | diff | 15300 | 2594 | `1445f42373acf799` |
 | search | 21193 | 2429 | `09ee7a8639b2eab3` |
 
+> `code` 行是合成输入（重复函数模板），输出大于输入是 tree_sitter 的正常行为，
+> 不代表压缩质量；真实代码的压缩率见 4.7（21%～46%）。
+
 > **这组数据必须在升级前重新采集一次**，因为它是用当前生产环境跑出来的，
 > 而不仅仅是文档里的历史记录。把结果存到临时文件，阶段 4 要用它做逐项比对。
 
@@ -307,7 +310,7 @@ grep '^Requires-Python:' METADATA
 | # | 问题 | 如果答案不同怎么办 |
 |---|---|---|
 | 1 | base 依赖（不带 extra）有哪些？ | 与当前 `REQUIRED` 对比，决定是否增删 |
-| 2 | `litellm` 还在 base 里吗？ | **不在** → 走 §13.1，不需要打靶了 |
+| 2 | `litellm` 还在 base 里吗？ | **不在** → 走 §13.1，不需要重打包了 |
 | 3 | 新增了哪些重量级依赖？ | 逐个用阶段 2 的方法确认是否真的被 import |
 
 **比对方法**：
@@ -503,7 +506,7 @@ PY
 
 ### 3.1 更新 repack.py 的常量
 
-必须改的地方（共 5 处）：
+必须改的地方（共 6 处）：
 
 | 位置 | 行（约） | 内容 |
 |---|---|---|
@@ -632,7 +635,9 @@ sleep 2
 curl -s http://127.0.0.1:8799/health
 ```
 
-应返回 ok:true。> `compressors_loaded` 初始为空，因为压缩器懒加载。
+应返回 ok:true。
+
+> `compressors_loaded` 初始为空，因为压缩器懒加载。
 > 跑一次压缩后会填充，这不是异常。
 
 ### 4.5 五种类型压缩 + 与基线比对
@@ -649,11 +654,12 @@ curl -s http://127.0.0.1:8799/health
 输出形如：
 
 ```
-log      23590 ->    103   4fda7083b9f99b54  SAME
-json     25817 ->  15679   a3b9495cc7eec9c2  SAME
-code     27380 ->  32979   590d391c4c0b5cb3  SAME
-diff     15300 ->   2594   1445f42373acf799  SAME
-search   21193 ->   2429   09ee7a8639b2eab3  SAME
+kind     expected                     actual                       match
+log      in=23590  out=103  4fda7083b9f99b54 | in=23590  out=103  4fda7083b9f99b54 | YES
+json     in=25817  out=15679 a3b9495cc7eec9c2 | in=25817  out=15679 a3b9495cc7eec9c2 | YES
+code     in=27380  out=32979 590d391c4c0b5cb3 | in=27380  out=32979 590d391c4c0b5cb3 | YES
+diff     in=15300  out=2594  1445f42373acf799 | in=15300  out=2594  1445f42373acf799 | YES
+search   in=21193  out=2429  09ee7a8639b2eab3 | in=21193  out=2429  09ee7a8639b2eab3 | YES
 RESULT: ALL PASS
 ```
 
@@ -664,8 +670,8 @@ RESULT: ALL PASS
 
 | 结果 | 含义 | 处理 |
 |---|---|---|
-| 全部 SAME | 压缩算法未变 | 可以直接切换 |
-| 部分 DIFF，但压缩率相近 | 上游改了算法或标记文字 | 人工检查输出可读性后决定 |
+| 全部 YES | 压缩算法未变 | 可以直接切换 |
+| 部分 NO，但压缩率相近 | 上游改了算法或标记文字 | 人工检查输出可读性后决定 |
 | **压缩率明显下降** | 算法退化 | 停止，回退 |
 | **输出含乱码或截断错误** | 严重问题 | 停止，回退 |
 | **retrieve 往返不一致** | 存储层问题 | 停止，回退 |
@@ -746,6 +752,16 @@ rm -rf /tmp/hr_slim_test /tmp/hr_test_store /tmp/hr_test_ws /tmp/hr_upstream_ven
 
 **目标**：把生产环境换成新 wheel。**耗时**：约 20 分钟。
 
+> 开始前先跑一次自检。`npm test` 需要 8797 上的 sidecar，必须在 5.1 停掉它之前执行：
+>
+> ```bash
+> cd /e/AQYLPZ_WorkMenu/dsh_headroom
+> npm run check && npm run check:py && npm test
+> ```
+>
+> 另外建议先退出 DSH，再执行 5.1–5.8。DSH 运行期间插件可能在 venv 被移走/重建时
+> 尝试拉起 sidecar，造成文件占用或拉起失败。
+
 ### 5.1 停 sidecar（必须杀进程树）
 
 Windows 上 venv 的 `pythonw.exe` 是个启动器，会再拉起一个基础解释器。
@@ -801,6 +817,8 @@ uv pip install --python venv/Scripts/python.exe \
 | `package.json` | `version` | `0.1.3` |
 | `sidecar/sidecar.py` | `_VERSION` | `0.1.3` |
 
+> 若只是升级 Python 依赖、插件代码未变，可跳过 5.5–5.7（见 5.6 的情况 1），不需要升插件版本。
+
 > 为什么 `sidecar.py` 也要改：`/health` 返回的 `version` 字段读这个常量。
 > 不改的话无法从健康检查区分新旧环境，验收会受阻。
 
@@ -809,8 +827,8 @@ uv pip install --python venv/Scripts/python.exe \
 ```bash
 cd /e/AQYLPZ_WorkMenu/dsh_headroom
 
-# 1. 自检
-npm run check && npm run check:py && npm test
+# 1. 静态检查（npm test 已在阶段 5 开始前跑过）
+npm run check && npm run check:py
 
 # 2. 打包（产物名取 package.json 的 name 字段，当前为 bale）
 npm pack
@@ -819,8 +837,24 @@ npm pack
 # 3. 复制到 profile 的 vendor 目录
 cp bale-0.1.4.tgz /d/DSH-Home/.dsh/profiles/desktop/vendor/
 
-# 4. 改 profile 的 package.json 里的 tgz 文件名
+# 4. 按下面「包名与 profile 安装键」的说明修改 profile
 ```
+
+> **包名与 profile 安装键（改名后必须二选一）**
+>
+> 仓库的 `package.json` name 已是 `bale`，`npm pack` 产出 `bale-0.1.4.tgz`。按本次是否改插件代码分两种情况：
+>
+> 1. **只升级 Python wheel，插件代码不变**：不需要执行 5.5–5.7，也不需要重新打包。
+>    保留现有 headroom-auto 0.1.3 安装，只重建 venv（5.4）并重启 DSH。是否升级成功用
+>    `python -c "import importlib.metadata as m; print(m.version('headroom-ai'))"` 确认。
+> 2. **改了插件代码或要升插件版本**：推荐同时落地 bale 改名——把 profile `package.json`
+>    的依赖键与 `dsh.profile.bundles`、`cordis.patch.yml` 的 `id`/`name`、`sidecarScript`
+>    路径一起改为 `bale`，使 tgz 名与安装目录一致。
+>
+> **不建议只把 `package.json` 的 name 临时改回 `headroom-auto` 再打包**：tgz 内还带有
+> `cordis.patch.yml` 的 id 和 `lib/index.js` 的导出名（均为 `bale`），与 profile 的
+> `headroom-auto` id 不一致，可能导致插件重复加载或配置不生效。若确实要保留旧身份，
+> 应使用改名前的 `1e13aa3` 提交打包，而不是从当前工作区临时改名。
 
 ### 5.7 pnpm install 有陷阱
 
@@ -852,6 +886,9 @@ curl -s http://127.0.0.1:8797/health
 
 `compressors_loaded` 为空是正常的（懒加载）。
 
+> 上面的手动命令用的是仓库内 `sidecar.py`（内容与安装包一致）；正式部署后插件会按 profile 的
+> `sidecarScript` 路径自动拉起，以安装目录中的脚本为准。
+
 ---
 
 ## 阶段 6：端到端验收
@@ -867,7 +904,7 @@ curl -s http://127.0.0.1:8797/health
 | 1 | 健康 | `curl -s http://127.0.0.1:8797/health` | ok:true，version 为新插件版本 |
 | 2 | 压缩器 | 跑一次各类型压缩后再查 /health | 6 个全在 compressors_loaded |
 | 3 | 依赖一致 | `uv pip check --python $VENV/Scripts/python.exe` | All installed packages are compatible |
-| 4 | 五类型压缩 | `$VENV/Scripts/python.exe 阶段C-基线对拍.py` | RESULT: ALL PASS（或 DIFF 但压缩率相近） |
+| 4 | 五类型压缩 | `$VENV/Scripts/python.exe 阶段C-基线对拍.py` | RESULT: ALL PASS（或 MISMATCH 但压缩率相近，需人工判断） |
 | 5 | retrieve 往返 | 阶段 4.6 | byte-identical: True |
 | 6 | 真实代码 | 阶段 4.7 | 压缩率 15%~60% |
 | 7 | 旧 store 兼容 | 阶段 6.2 | 全部 match=True |
@@ -912,7 +949,7 @@ PY
 升级后建议观察 **1–3 天**，重点关注：
 
 ```bash
-python 工作脚本/headroom插件迁移验证/监控headroom效果.py --days 1
+python "E:/AQYLPZ_WorkMenu/工作脚本/headroom插件迁移验证/监控headroom效果.py" --days 1
 ```
 
 | 指标 | 正常范围 | 异常信号 |
@@ -979,7 +1016,7 @@ npm pack && cp *.tgz /d/DSH-Home/.dsh/profiles/desktop/vendor/
 
 ### 13.1 上游把 litellm 移出了 base 依赖（最佳情况）
 
-这说明上游采纳了合理建议。此时**不需要打靶**。
+这说明上游采纳了合理建议。此时**不需要重打包**。
 
 判断方法（阶段 1.4 的问题 2）：
 
@@ -996,7 +1033,14 @@ grep '^Requires-Dist:' METADATA | grep -v 'extra ==' | grep litellm
 4. 更新 `README.md` 的「依赖精简说明」章节，改为"上游已修复，本项目回归官方包"
 5. 更新本文档，在开头加一段说明"本流程已不再需要"
 
-**仍需执行阶段 2–4**，验证官方包的压缩行为与当前是否一致。
+**仍需执行阶段 2 和阶段 4（跳过阶段 3 的重打包）**，验证官方包的压缩行为与当前是否一致。
+阶段 4.1 的安装命令改为：
+
+```bash
+uv pip install --python /tmp/hr_slim_test/Scripts/python.exe "headroom-ai[code]==X.Y.Z"
+```
+
+不加 `--find-links`，也不用 `.post1` 版本；其余验证步骤不变。
 
 ### 13.2 上游改了 wheel 结构
 
@@ -1024,7 +1068,7 @@ grep '^Requires-Dist:' METADATA | grep -v 'extra ==' | grep litellm
 
 ### 13.4 上游的压缩算法变了
 
-症状：阶段 4.5 显示部分或全部 DIFF。
+症状：阶段 4.5 显示部分或全部 MISMATCH。
 
 处理：
 
@@ -1044,7 +1088,7 @@ grep '^Requires-Dist:' METADATA | grep -v 'extra ==' | grep litellm
 
 | 症状 | 可能原因 | 排查方法 | 处理 |
 |---|---|---|---|
-| uv pip check 报缺包 | REQUIRED 漏了某包 | 看报错里的包名 | 加进 REQUIRED，重打靶 |
+| uv pip check 报缺包 | REQUIRED 漏了某包 | 看报错里的包名 | 加进 REQUIRED，重新打包 |
 | json 压缩 ImportError | httpx 缺失 | grep httpx REQUIRED | 补上 httpx>=0.24.0 |
 | code 压缩率接近 100% | tree_sitter 未生效 | 检查 dist 里有无 tree_sitter_language_pack | 补进 REQUIRED |
 | sidecar 起不来 | 端口占用 / Python 路径错 | 看 /health、查 logs/sidecar.log | 杀进程树重启 |
@@ -1087,7 +1131,8 @@ python tools/repack/repack.py --help
 > **注意：仓库已改名为 bale（2026-11-09），但部署侧尚未跟进。**
 > 上表中的日志文件名、插件安装目录、profile 依赖名仍是 headroom-auto，
 > 因为数据目录与安装目录的迁移被有意推迟（见任务文档）。
-> 若你正在执行改名第二步，这些路径会同步变更，届时以实际为准。
+> 若你正在部署 bale（改名第一步落地），插件安装目录与 profile 依赖名会同步变更；
+> 数据目录与工具名的第二步另见交接文档。日志文件名仍保持 headroom-auto.log。
 
 ### 15.3 相关文档
 

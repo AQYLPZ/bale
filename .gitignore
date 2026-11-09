@@ -13,6 +13,9 @@ logs/
 # build artifacts
 *.tgz
 
+# 上游升级时的本地 wheel 备份（见 docs/upstream-upgrade.md）
+vendor/wheels.prev/
+
 # python
 __pycache__/
 *.py[cod]
