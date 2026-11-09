@@ -208,8 +208,8 @@ ls -d /d/DSH-Home/.dsh/profiles/desktop/.headroom/venv/Lib/site-packages/*.dist-
 这一组 sha256 是判断"升级后压缩行为是否改变"的唯一依据。
 
 ```bash
-# 注意：这些脚本在「工作脚本/headroom依赖精简/」目录下，不在「headroom插件迁移验证/」下
-python "E:/AQYLPZ_WorkMenu/工作脚本/headroom依赖精简/阶段C-基线对拍.py"
+# 注意：这些脚本在「工作脚本/headroom插件/依赖精简/」目录下，不在「工作脚本/headroom插件/迁移验证/」下
+python "E:/AQYLPZ_WorkMenu/工作脚本/headroom插件/依赖精简/阶段C-基线对拍.py"
 ```
 
 该脚本直接调用压缩器（不走 HTTP），输出五个 sha 并与内置基线比对。
@@ -647,7 +647,7 @@ curl -s http://127.0.0.1:8799/health
 ```bash
 # 用临时 venv 的 Python 跑，指向临时 venv 的 site-packages
 /tmp/hr_slim_test/Scripts/python.exe \
-  "E:/AQYLPZ_WorkMenu/工作脚本/headroom依赖精简/阶段C-基线对拍.py"
+  "E:/AQYLPZ_WorkMenu/工作脚本/headroom插件/依赖精简/阶段C-基线对拍.py"
 ```
 
 该脚本内置了 0.42.0 的五个期望值，直接调用压缩器（不走 HTTP），
@@ -913,8 +913,8 @@ curl -s http://127.0.0.1:8797/health
 
 两个验证脚本的完整路径：
 ```
-E:/AQYLPZ_WorkMenu/工作脚本/headroom依赖精简/阶段C-基线对拍.py
-E:/AQYLPZ_WorkMenu/工作脚本/headroom依赖精简/阶段D-端到端验证.py
+E:/AQYLPZ_WorkMenu/工作脚本/headroom插件/依赖精简/阶段C-基线对拍.py
+E:/AQYLPZ_WorkMenu/工作脚本/headroom插件/依赖精简/阶段D-端到端验证.py
 ```
 
 > `阶段C-基线对拍.py` 直接 import `headroom` 调压缩器，所以**必须用目标 venv 的 python 跑**，
@@ -949,7 +949,7 @@ PY
 升级后建议观察 **1–3 天**，重点关注：
 
 ```bash
-python "E:/AQYLPZ_WorkMenu/工作脚本/headroom插件迁移验证/监控headroom效果.py" --days 1
+python "E:/AQYLPZ_WorkMenu/工作脚本/headroom插件/迁移验证/监控headroom效果.py" --days 1
 ```
 
 | 指标 | 正常范围 | 异常信号 |
