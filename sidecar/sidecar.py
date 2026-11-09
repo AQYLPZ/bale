@@ -147,8 +147,8 @@ def _get_compressor(kind):
             fn = lambda text, language=None: c.compress(text).compressed
         elif kind == "generic":
             # 结构化无关的大文本（文件列表、代码块、文档、混合输出）。
-            # 不做语义压缩，只做行级抽样；保留头尾与折叠标记。
-            fn = lambda text, language=None: sample_lines(text)[0]
+            # 少行超长内容走字符级切片，其余走行级抽样。
+            fn = lambda text, language=None: compress_generic(text)
         else:
             raise ValueError(f"unknown kind: {kind}")
         _compressors[kind] = fn
@@ -204,13 +204,31 @@ def _detect_special(text: str) -> str | None:
     return None
 
 
+_WEB_FETCH_MARKER = "External web content follows."
+
+
+def _strip_web_fetch_wrapper(text: str) -> str:
+    """剥离 web_fetch 的已知头部，只用于类型检测；压缩输入仍是完整原文。"""
+    if not text.lstrip().startswith("Fetched http"):
+        return text
+    idx = text.find(_WEB_FETCH_MARKER)
+    if idx < 0:
+        return text
+    rest = text[idx + len(_WEB_FETCH_MARKER):]
+    nl = rest.find("\n")
+    if nl >= 0:
+        rest = rest[nl + 1:]
+    return rest.lstrip("\r\n")
+
+
 def detect_kind(text: str) -> str:
-    stripped = text.strip()
+    probe = _strip_web_fetch_wrapper(text)
+    stripped = probe.strip()
     if not stripped:
         return "generic"
 
     # 先看是不是 git diff / grep 搜索结果（这是我们原先漏掉的两类高频输出）
-    special = _detect_special(text)
+    special = _detect_special(probe)
     if special:
         return special
 
@@ -220,7 +238,7 @@ def detect_kind(text: str) -> str:
             return "json"
         except Exception:
             pass
-    lines = [ln for ln in text.splitlines() if ln.strip()]
+    lines = [ln for ln in probe.splitlines() if ln.strip()]
     if len(lines) >= 5:
         hits = sum(1 for ln in lines if _TS_RE.search(ln))
         if hits / len(lines) >= 0.3:
@@ -412,6 +430,33 @@ def sample_lines(
 
     # 去掉尾部多余空行：输出最后一行必须是原文的最后一行（模型靠此读 [exit code: N]）
     return summary + "".join(out_parts).rstrip("\r\n"), omitted
+
+
+def _char_slice(text: str) -> str:
+    """字符级切片：保留首 30% + 尾 20%，中间显式写明省略字符数。"""
+    head = int(len(text) * 0.3)
+    tail = int(len(text) * 0.2)
+    if head <= 0 or tail <= 0 or head + tail >= len(text):
+        return text
+    omitted = len(text) - head - tail
+    return text[:head] + f"\n…已省略 {omitted} 字符…\n" + text[-tail:]
+
+
+def compress_generic(text: str) -> str:
+    """generic 入口：少行超长内容不走行级抽样，改字符级切片。
+
+    单行代码/压缩 bundle 的 ;{}() 密度高，切片会切断 token，退回行级抽样。
+    """
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    max_line = max((len(ln) for ln in lines), default=0)
+    if (len(lines) < _DEFAULT_HEAD_LINES + _DEFAULT_TAIL_LINES + _SAMPLE_MIN_OMIT
+            and max_line > 2000):
+        longest = max(lines, key=len)
+        code_chars = sum(longest.count(c) for c in ";{}()")
+        if code_chars / max(len(longest), 1) > 0.01:
+            return sample_lines(text)[0]
+        return _char_slice(text)
+    return sample_lines(text)[0]
 
 
 # ── 告警行保留（补回被 dedupe/截断吃掉的疑似有问题行）────────────────────
@@ -741,10 +786,21 @@ def do_compress(payload: dict) -> tuple[int, dict]:
                      "ms": 0, "ratio": 1.0, "compressed": False, "text": decoded,
                      "note": "kompress model not cached"}
 
+    wrapper_prefix = ""
+    _probe = _strip_web_fetch_wrapper(decoded)
+    if len(_probe) < len(decoded):
+        wrapper_prefix = decoded[: len(decoded) - len(_probe)]
+
     t0 = time.perf_counter()
     with _comp_lock:
         fn = _get_compressor(kind)
         out = fn(decoded, language)
+        # web_fetch wrapper 会破坏 json 解析：改压剥离后的 body 再拼回头部。
+        if (isinstance(out, str) and wrapper_prefix
+                and len(out) >= len(_probe)):
+            body = fn(_probe, language)
+            if isinstance(body, str) and len(body) < len(_probe):
+                out = wrapper_prefix + body
     ms = round((time.perf_counter() - t0) * 1000, 1)
 
     # 【信息保真守卫】LogCompressor 在纯 INFO 日志 / 文件列表 / 代码 / CSV 上
@@ -755,12 +811,14 @@ def do_compress(payload: dict) -> tuple[int, dict]:
         kept_lines = sum(1 for ln in out.splitlines() if ln.strip())
         src_lines = sum(1 for ln in decoded.splitlines() if ln.strip())
         # 源内容有超过 20 行，但输出保留不到 5 行 → 判为"内容被清空"
-        if src_lines > 20 and kept_lines < 5:
+        # 加体积条件：JSON 压缩输出天然少行，避免把正常压缩误判成清空。
+        if src_lines > 20 and kept_lines < 5 and len(out) < 0.1 * len(decoded):
             fallback, omitted = sample_lines(decoded)
             if omitted > 0 and len(fallback) < len(decoded):
                 log({"event": "degenerate-fallback", "kind": kind,
-                     "src_lines": src_lines, "kept_lines": kept_lines,
-                     "fallback_omitted": omitted})
+                     "src_lines": src_lines, "kept_before_fallback": kept_lines,
+                     "kept_lines_legacy": kept_lines, "fallback_omitted": omitted,
+                     "kept_final": src_lines - omitted})
                 out = fallback
 
     # 日志压缩默认会 dedupe 掉重复 WARN。这里把"源里有、输出里没有"的

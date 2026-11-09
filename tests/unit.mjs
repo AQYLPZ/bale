@@ -4,12 +4,13 @@
  * 用法：npm test
  */
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { writeFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
 import { resolveConfig } from "../lib/config.js";
-import { maybeCompress } from "../lib/index.js";
+import { maybeCompress, apply, looksLikeDocumentDump } from "../lib/index.js";
 import { compressText, retrieveText, health } from "../lib/sidecar-client.js";
 
 let passed = 0, failed = 0;
@@ -63,6 +64,40 @@ await t("kinds 开放模式（默认）-> 以 sidecar 判定为准", async () =>
   const d = await maybeCompress({ name: "pwsh" }, mkResult(bigLog(3000)), cfg);
   assert.ok(d, "开放模式下 log 应被放行（sidecar 判定可压）");
   assert.match(d.content[0].text, /类型 log/);
+});
+
+console.log("== T6b 文件转储形状守卫 ==");
+await t("内联 markdown fixture -> 判为 doc-dump", async () => {
+  const docFixture = [
+    "# 标题一", "正文……", "```js", "const a = 1;", "```",
+    "## 标题二", "正文……", "```bash", "echo hi", "```",
+    "## 标题三", "正文……", "## 标题四", "正文……",
+    "## 标题五", "正文……", "## 标题六", "正文……", "## 标题七", "正文……",
+  ].join("\n");
+  assert.equal(looksLikeDocumentDump(docFixture), true);
+});
+await t("800 行 ps 风格输出 -> 不判为 doc-dump", async () => {
+  const ps = Array.from({ length: 800 }, (_, i) =>
+    `  ${1000 + i}  pts/0    00:00:0${i % 10} 0:00.01 ${i % 10} bash`).join("\n");
+  assert.equal(looksLikeDocumentDump(ps), false);
+});
+await t("纯叙述 markdown（无代码围栏）-> 判为 doc-dump", async () => {
+  const narrative = "# 总览\n" + Array.from({ length: 30 }, (_, i) =>
+    `## 第 ${i + 1} 节\n本节内容……`).join("\n");
+  assert.equal(looksLikeDocumentDump(narrative), true);
+});
+await t("Python 注释风格（# 开头但无 ##）-> 不判为 doc-dump", async () => {
+  const py = Array.from({ length: 400 }, (_, i) => `# comment line ${i}`).join("\n");
+  assert.equal(looksLikeDocumentDump(py), false);
+});
+await t("skipInfo 记录 doc-dump 原因", async () => {
+  const cfg = resolveConfig();
+  const narrative = "# 总览\n" + Array.from({ length: 30 }, (_, i) =>
+    `## 第 ${i + 1} 节\n` + "本节内容……".repeat(60)).join("\n");
+  const info = {};
+  const d = await maybeCompress({ name: "run_code" }, mkResult(narrative), cfg, info);
+  assert.equal(d, null);
+  assert.equal(info.reason, "doc-dump");
 });
 
 console.log("== 压缩路径（真实 sidecar） ==");
@@ -496,6 +531,37 @@ await t("retrieve 往返", async () => {
   assert.equal(r.compressed, true);
   const back = await retrieveText(r.hash, cfg);
   assert.equal(back, src, "retrieve 应与原文逐字一致");
+});
+
+// 放在最后：apply() 会后台触发 ensureSidecar，避免与前面的熔断测试竞争。
+console.log("== T2 retrieve 闭环 ==");
+await t("本地 sha256 与 sidecar hash 一致", async () => {
+  const cfg = resolveConfig();
+  const src = bigLog(2500) + "\nT2-hash-align-marker";
+  const r = await compressText(src, cfg);
+  assert.equal(r.compressed, true);
+  const local = createHash("sha256").update(Buffer.from(src, "utf8")).digest("hex").slice(0, 16);
+  assert.equal(local, r.hash);
+});
+await t("retrieve 后同内容不再压缩，不同内容仍压缩", async () => {
+  const cfg = resolveConfig();
+  let tool;
+  const ctx = {
+    on: () => {},
+    tools: { register: (t) => { tool = t; } },
+    logger: { warn: () => {} },
+  };
+  apply(ctx, cfg);
+  assert.ok(tool, "apply 应注册 headroom_retrieve");
+  const src = bigLog(3000) + "\nT2-retrieved-unique-marker";
+  const r = await compressText(src, cfg);
+  assert.equal(r.compressed, true);
+  await tool.execute({ hash: r.hash });
+  const d = await maybeCompress({ name: "pwsh" }, mkResult(src), cfg);
+  assert.equal(d, null, "retrieve 后同内容应跳过压缩");
+  const other = bigLog(3001) + "\nT2-other-unique-marker";
+  const d2 = await maybeCompress({ name: "pwsh" }, mkResult(other), cfg);
+  assert.ok(d2, "不同内容仍应压缩");
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
