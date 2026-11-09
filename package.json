@@ -1,5 +1,5 @@
 {
-  "name": "headroom-auto",
+  "name": "bale",
   "version": "0.1.3",
   "description": "DSH plugin that compresses large tool outputs before they enter the model context, with hash-based retrieval of the original text.",
   "type": "module",

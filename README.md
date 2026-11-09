@@ -1,4 +1,4 @@
-# headroom-auto
+# bale
 
 > 让 AI Agent 的工具输出在进入模型上下文之前自动压缩 —— 大日志不占上下文，原文随时可取回。
 
@@ -32,7 +32,7 @@
 
 Agent 跑一次 `npm run build`、`pytest -v`、`docker logs`，输出动辄几十万字符。这些内容**99% 是重复的 INFO 行**，但会实实在在烧掉上下文窗口，让真正需要推理的部分没有空间。
 
-现有方案要么不分青红皂白全丢（信息损失），要么全留（上下文爆炸）。headroom-auto 走第三条路：
+现有方案要么不分青红皂白全丢（信息损失），要么全留（上下文爆炸）。bale 走第三条路：
 
 - **压缩有结构的部分** —— 重复日志行、未改动的 diff 上下文、同文件的 grep 命中
 - **保留有信息量的部分** —— ERROR/WARN 全留、diff 的 `-/+` 全留、首尾边界完整
@@ -158,16 +158,16 @@ venv/bin/python -m pip install --find-links ./vendor/wheels "headroom-ai[code]==
 
 > 该 wheel 是 `cp310-abi3-win_amd64`，仅适用于 Windows x64。macOS / Linux 需基于对应平台的原始 wheel，调整 `tools/repack/repack.py` 中的 `TAG` / `OUT_NAME` 后重新打包。
 >
-> 通过 npm 安装插件时，npm 包不包含 `vendor/wheels/`（约 15 MB）。需要把 wheel 复制到 `node_modules/headroom-auto/vendor/wheels/`，或直接在仓库内按上面的命令安装。
+> 通过打包安装插件时，tgz 不包含 `vendor/wheels/`（约 15 MB）。需要把 wheel 复制到 `node_modules/bale/vendor/wheels/`，或直接在仓库内按上面的命令安装。
 
 > 不要装 `[ml]` 额外组 —— 它会把值得注意的依赖树拖进来，且本插件的 text 压缩默认停用。
 
 **3. 打包并安装插件**
 
 ```bash
-# 在 headroom-auto 目录内；npm pack 会按 package.json 的 files 白名单打包
+# 在仓库根目录内；npm pack 会按 package.json 的 files 白名单打包
 npm pack
-# 生成 headroom-auto-0.1.3.tgz（内部根目录为 package/，这是 pnpm 能识别的格式）
+# 生成 bale-0.1.3.tgz（内部根目录为 package/，这是 pnpm 能识别的格式）
 ```
 
 把 tgz 放到 profile 的 `vendor/` 目录，然后在 profile 的 `package.json` 里添加：
@@ -175,11 +175,11 @@ npm pack
 ```json
 {
   "dependencies": {
-    "headroom-auto": "file:./vendor/headroom-auto-0.1.3.tgz"
+    "bale": "file:./vendor/bale-0.1.3.tgz"
   },
   "dsh": {
     "profile": {
-      "bundles": [ "headroom-auto" ]
+      "bundles": [ "bale" ]
     }
   }
 }
@@ -187,19 +187,19 @@ npm pack
 
 执行 `pnpm install`。
 
-> **也可以直接从 npm 安装**：跳过上面的 `npm pack`，在 profile 的 `package.json` 里把依赖写成 `"headroom-auto": "^0.1.3"`，再执行 `pnpm install`。npm 包内已包含 `lib/`、`sidecar/sidecar.py`、`cordis.patch.yml` 和 `requirements.txt`；Python 依赖仍需按第 2 步单独安装，从 npm 装时对应路径是 `node_modules/headroom-auto/requirements.txt`。
+> **本项目未发布到 npm**（npm 上的 `bale` 是另一个包，当前 0.2.0），请使用上面的本地 tgz 方式安装。tgz 内已包含 `lib/`、`sidecar/sidecar.py`、`cordis.patch.yml` 和 `requirements.txt`；Python 依赖仍需按第 2 步单独安装，安装后对应路径是 `node_modules/bale/requirements.txt`。
 
 **4. 配置绝对路径**
 
 在 profile 的 `cordis.patch.yml` 里加：
 
 ```yaml
-- id: headroom-auto
-  name: headroom-auto
+- id: bale
+  name: bale
   config:
     enabled: true
     sidecarPython: '<PROFILE>/.headroom/venv/Scripts/pythonw.exe'
-    sidecarScript: '<PROFILE>/node_modules/headroom-auto/sidecar/sidecar.py'
+    sidecarScript: '<PROFILE>/node_modules/bale/sidecar/sidecar.py'
     storeDir: '<PROFILE>/.headroom/store'
     wsDir: '<PROFILE>/.headroom/headroom_ws'
     logFile: '<PROFILE>/.headroom/logs/headroom-auto.log'
@@ -223,7 +223,7 @@ curl http://127.0.0.1:8797/health
 ## 项目结构
 
 ```text
-headroom-auto/
+bale/
 ├── lib/
 │   ├── index.js            # DSH 钩子、替换逻辑、headroom_retrieve 工具
 │   ├── config.js           # 配置默认值与解析
@@ -636,11 +636,11 @@ lsof -i :8797                     # macOS/Linux
 
 ```bash
 # 1. 从 profile package.json 移除
-#    - dependencies 里的 headroom-auto
-#    - dsh.profile.bundles 里的 "headroom-auto"
+#    - dependencies 里的 bale
+#    - dsh.profile.bundles 里的 "bale"
 
 # 2. 移除配置
-#    从 cordis.patch.yml 删掉 id: headroom-auto 那一段
+#    从 cordis.patch.yml 删掉 id: bale 那一段
 
 # 3. 卸载依赖
 cd <PROFILE> && pnpm install

@@ -1,6 +1,6 @@
 - insert:
-    - id: headroom-auto
-      name: 'headroom-auto'
+    - id: bale
+      name: 'bale'
       config:
         enabled: true
         minChars: 8192
