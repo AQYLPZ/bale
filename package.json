@@ -24,11 +24,11 @@
   "author": "AQYLPZ",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AQYLPZ/headroom-auto.git"
+    "url": "git+https://github.com/AQYLPZ/bale.git"
   },
-  "homepage": "https://github.com/AQYLPZ/headroom-auto#readme",
+  "homepage": "https://github.com/AQYLPZ/bale#readme",
   "bugs": {
-    "url": "https://github.com/AQYLPZ/headroom-auto/issues"
+    "url": "https://github.com/AQYLPZ/bale/issues"
   },
   "keywords": [
     "dsh",

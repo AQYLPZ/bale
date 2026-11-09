@@ -134,8 +134,8 @@ CRITICAL_PATTERNS = [
 **1. 获取源码**
 
 ```bash
-git clone https://github.com/AQYLPZ/headroom-auto.git
-cd headroom-auto
+git clone https://github.com/AQYLPZ/bale.git
+cd bale
 ```
 
 **2. 创建 Python 环境并安装 headroom-ai**
