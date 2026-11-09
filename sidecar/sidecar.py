@@ -746,6 +746,7 @@ def check_path_allowed(path: str) -> str | None:
 
 
 def do_compress(payload: dict) -> tuple[int, dict]:
+    no_store = bool(payload.get("no_store"))
     text = payload.get("text")
     path = payload.get("path")
     if not (isinstance(text, str) ^ isinstance(path, str)):
@@ -772,8 +773,7 @@ def do_compress(payload: dict) -> tuple[int, dict]:
 
     if kind in DISABLED_KINDS:
         # 停用类型：立刻返回原文，不做任何压缩（避免无收益的长耗时）
-        h = store_bytes(raw)
-        return 200, {"hash": h, "kind": kind, "in_chars": len(decoded), "out_chars": len(decoded),
+        return 200, {"hash": None, "kind": kind, "in_chars": len(decoded), "out_chars": len(decoded),
                      "ms": 0, "ratio": 1.0, "compressed": False, "text": decoded,
                      "note": f"kind '{kind}' disabled by HEADROOM_DISABLED_KINDS"}
 
@@ -781,8 +781,7 @@ def do_compress(payload: dict) -> tuple[int, dict]:
 
     if kind == "text" and not kompress_model_ready():
         # 无模型：不压、不报错，原文照常返回（fail-open）
-        h = store_bytes(raw)
-        return 200, {"hash": h, "kind": kind, "in_chars": len(decoded), "out_chars": len(decoded),
+        return 200, {"hash": None, "kind": kind, "in_chars": len(decoded), "out_chars": len(decoded),
                      "ms": 0, "ratio": 1.0, "compressed": False, "text": decoded,
                      "note": "kompress model not cached"}
 
@@ -831,8 +830,7 @@ def do_compress(payload: dict) -> tuple[int, dict]:
             pass  # 任何异常都不影响主流程
 
     if not isinstance(out, str) or len(out) >= len(decoded):
-        h = store_bytes(raw)
-        return 200, {"hash": h, "kind": kind, "in_chars": len(decoded),
+        return 200, {"hash": None, "kind": kind, "in_chars": len(decoded),
                      "out_chars": len(decoded), "ms": ms, "ratio": 1.0,
                      "compressed": False, "text": decoded}
 
@@ -841,14 +839,13 @@ def do_compress(payload: dict) -> tuple[int, dict]:
     # 原样返回原文并标记 compressed=false，让插件跳过替换、模型看到完整内容。
     out_ratio = len(out) / max(len(decoded), 1)
     if out_ratio < 0.005 and len(out) < 200:
-        h = store_bytes(raw)
         log({"event": "reject-too-small", "kind": kind,
              "in_chars": len(decoded), "out_chars": len(out), "ratio": out_ratio})
-        return 200, {"hash": h, "kind": kind, "in_chars": len(decoded), "out_chars": len(decoded),
+        return 200, {"hash": None, "kind": kind, "in_chars": len(decoded), "out_chars": len(decoded),
                      "ms": ms, "ratio": 1.0, "compressed": False, "text": decoded,
                      "note": f"压缩输出过小（{len(out)} 字符 / {out_ratio:.4%}），已拒绝替换"}
 
-    h = store_bytes(raw)
+    h = "" if no_store else store_bytes(raw)
     return 200, {"hash": h, "kind": kind, "in_chars": len(decoded), "out_chars": len(out),
                  "ms": ms, "ratio": round(out_ratio, 4),
                  "compressed": True, "text": out}

@@ -175,7 +175,7 @@ await t("混合级别日志 -> WARN 全部保留", async () => {
   const src = mixedLog(800);
   const wantWarn = (src.match(/WARN worker/g) || []).length;
   const wantErr = (src.match(/ERROR worker/g) || []).length;
-  const r = await compressText(src, cfg);
+  const r = await compressText(src, cfg, undefined, { no_store: true });
   assert.equal(r.compressed, true);
   const gotWarn = (r.text.match(/WARN worker/g) || []).length;
   const gotErr = (r.text.match(/ERROR worker/g) || []).length;
@@ -187,7 +187,7 @@ await t("混合级别日志 -> WARN 全部保留", async () => {
 await t("纯 INFO 日志 -> 不产生补回块", async () => {
   const cfg = resolveConfig();
   const src = bigLog(800);
-  const r = await compressText(src, cfg);
+  const r = await compressText(src, cfg, undefined, { no_store: true });
   assert.equal(r.compressed, true);
   assert.ok(!r.text.includes("[WARN 保留]"), "没有告警行时不应出现补回块");
 });
@@ -196,7 +196,7 @@ await t("JSON 类型 -> 不触发 WARN 补回", async () => {
   const cfg = resolveConfig();
   const src = Array.from({ length: 800 }, (_, i) =>
     JSON.stringify({ id: i, lvl: i % 50 === 0 ? "WARN" : "INFO" })).join("\n");
-  const r = await compressText(src, cfg);
+  const r = await compressText(src, cfg, undefined, { no_store: true });
   assert.ok(!String(r.text).includes("[WARN 保留]"), "非 log 类型不应补回");
 });
 
@@ -214,7 +214,7 @@ await t("超过 8192 的日志会被压缩", async () => {
     `2026-11-06 00:00:${String(i % 60).padStart(2, "0")} INFO worker step=${i} status=ok`).join("\r\n");
   const long = base8k();
   assert.ok(long.length > 8192, "样例应超过阈值");
-  const r = await compressText(long, cfg);
+  const r = await compressText(long, cfg, undefined, { no_store: true });
   assert.equal(r.compressed, true, "超过阈值应压缩");
 });
 
@@ -250,7 +250,7 @@ await t("超预算时明写未能补回条数", async () => {
     if (i % 100 === 0) lines.push(`2026-11-06 00:00:00 WARN worker step=${i} ${"Y".repeat(900)}`);
     else lines.push(`2026-11-06 00:00:00 INFO worker step=${i} ok`);
   }
-  const r = await compressText(lines.join("\n"), cfg);
+  const r = await compressText(lines.join("\n"), cfg, undefined, { no_store: true });
   assert.equal(r.compressed, true);
   assert.match(r.text, /未能补回/, "应明确告知未补回的条数");
 });
@@ -262,7 +262,7 @@ await t("完全重复告警给出频次汇总", async () => {
     if (i % 5 === 0) lines.push("2026-11-06 00:00:00 WARN worker retry limit reached");
     else lines.push(`2026-11-06 00:00:00 INFO worker step=${i} ok`);
   }
-  const r = await compressText(lines.join("\n"), cfg);
+  const r = await compressText(lines.join("\n"), cfg, undefined, { no_store: true });
   assert.equal(r.compressed, true);
   assert.match(r.text, /×\d+/, "应出现频次标注");
 });
@@ -294,7 +294,7 @@ const mkGrep = (files = 60) => {
 await t("git diff 自动识别为 diff 并压缩", async () => {
   const cfg = resolveConfig();
   const src = mkDiff();
-  const r = await compressText(src, cfg);
+  const r = await compressText(src, cfg, undefined, { no_store: true });
   assert.equal(r.compressed, true, "diff 应被压缩");
   assert.equal(r.kind, "diff", `应识别为 diff，实际 ${r.kind}`);
   assert.ok(r.ratio < 0.5, `压缩比应 <0.5，实际 ${r.ratio}`);
@@ -303,7 +303,7 @@ await t("git diff 自动识别为 diff 并压缩", async () => {
 await t("grep 输出自动识别为 search 并压缩", async () => {
   const cfg = resolveConfig();
   const src = mkGrep();
-  const r = await compressText(src, cfg);
+  const r = await compressText(src, cfg, undefined, { no_store: true });
   assert.equal(r.compressed, true, "search 应被压缩");
   assert.equal(r.kind, "search", `应识别为 search，实际 ${r.kind}`);
   assert.ok(r.ratio < 0.3, `压缩比应 <0.3，实际 ${r.ratio}`);
@@ -312,14 +312,14 @@ await t("grep 输出自动识别为 search 并压缩", async () => {
 await t("普通日志不被误判为 search", async () => {
   const cfg = resolveConfig();
   const src = bigLog(800);
-  const r = await compressText(src, cfg);
+  const r = await compressText(src, cfg, undefined, { no_store: true });
   assert.equal(r.kind, "log", `日志应仍识别为 log，实际 ${r.kind}`);
 });
 
 await t("散文不被误判为 diff/search", async () => {
   const cfg = resolveConfig();
   const src = ("这是一段普通的中文说明文字，不包含任何搜索结果或代码差异结构。" .repeat(300));
-  const r = await compressText(src, cfg);
+  const r = await compressText(src, cfg, undefined, { no_store: true });
   assert.ok(r.kind !== "diff" && r.kind !== "search", `散文被误判为 ${r.kind}`);
 });
 
@@ -452,7 +452,7 @@ await t("纯 INFO 日志不被清零（保留头尾）", async () => {
   const cfg = resolveConfig();
   const src = Array.from({ length: 400 }, (_, i) =>
     `2026-11-06 00:00:00 INFO step=${i + 1} ok`).join("\n");
-  const r = await compressText(src, cfg);
+  const r = await compressText(src, cfg, undefined, { no_store: true });
   assert.equal(r.compressed, true);
   const kept = r.text.split("\n").filter((l) => l.trim()).length;
   assert.ok(kept >= 100, `保留行数应 >=100，实际 ${kept}`);
@@ -469,7 +469,7 @@ await t("含 ERROR 的日志仍走 LogCompressor 且 ERROR 保留", async () => 
     else if (i % 20 === 0) lines.push(`2026-11-06 00:00:00 WARN step=${i} retry=2`);
     else lines.push(`2026-11-06 00:00:00 INFO step=${i} ok`);
   }
-  const r = await compressText(lines.join("\n"), cfg);
+  const r = await compressText(lines.join("\n"), cfg, undefined, { no_store: true });
   assert.equal(r.compressed, true);
   const errs = (r.text.match(/ERROR/g) || []).length;
   assert.ok(errs >= 8, `ERROR 应保留至少 8 条，实际 ${errs}`);
@@ -482,7 +482,7 @@ await t("generic 行级抽样：头尾逐字保留", async () => {
   const r = await fetch(cfg.sidecarUrl + "/compress", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: src, kind: "generic" }),
+    body: JSON.stringify({ text: src, kind: "generic", no_store: true }),
   }).then((x) => x.json());
   assert.equal(r.compressed, true);
   assert.match(r.text, /压缩视图|折叠|omitted/i, "应有摘要头");
@@ -502,7 +502,7 @@ await t("内容过小的输出被拒绝替换", async () => {
   const r = await fetch(cfg.sidecarUrl + "/compress", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: src, kind: "generic" }),
+    body: JSON.stringify({ text: src, kind: "generic", no_store: true }),
   }).then((x) => x.json());
   // 若输出 <200 字符且 <0.5%，必须 compressed=false
   if (r.out_chars < 200) {
@@ -513,11 +513,11 @@ await t("内容过小的输出被拒绝替换", async () => {
 console.log("== sidecar-client 故障路径 ==");
 await t("连接拒绝 -> 抛错（不静默）", async () => {
   const cfg = resolveConfig({ sidecarUrl: "http://127.0.0.1:9" });
-  await assert.rejects(() => compressText(bigLog(100), cfg));
+  await assert.rejects(() => compressText(bigLog(100), cfg, undefined, { no_store: true }));
 });
 await t("超时(timeoutMs=1) -> 抛 AbortError", async () => {
   const cfg = resolveConfig({ timeoutMs: 1 });
-  await assert.rejects(() => compressText(bigLog(3000), cfg), (e) => e.name === "AbortError" || /abort/i.test(String(e)));
+  await assert.rejects(() => compressText(bigLog(3000), cfg, undefined, { no_store: true }), (e) => e.name === "AbortError" || /abort/i.test(String(e)));
 });
 await t("health 正常返回", async () => {
   const cfg = resolveConfig();
