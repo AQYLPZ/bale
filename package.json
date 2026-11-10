@@ -1,6 +1,6 @@
 {
   "name": "bale",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "DSH plugin that compresses large tool outputs before they enter the model context, with hash-based retrieval of the original text.",
   "type": "module",
   "main": "lib/index.js",

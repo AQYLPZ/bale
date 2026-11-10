@@ -90,6 +90,15 @@ await t("Python 注释风格（# 开头但无 ##）-> 不判为 doc-dump", async
   const py = Array.from({ length: 400 }, (_, i) => `# comment line ${i}`).join("\n");
   assert.equal(looksLikeDocumentDump(py), false);
 });
+await t("行号版文档含裸空行 -> 仍判为 doc-dump（防 \\s* 回退）", async () => {
+  // 6 行带行号 ## 标题 + 8 行带行号正文，每行之间插一个【未编号裸空行】
+  // \s* 会把裸空行吞进匹配，stripped 行数 29→15，tsLines/lines 从 3.45% 变 6.67%，跨过 5% 阈值翻转结论
+  const lines = [];
+  for (let i = 1; i <= 6; i++) { lines.push((lines.length + 1) + "\t## 小节 " + i); lines.push(""); }
+  for (let i = 1; i <= 8; i++) { lines.push((lines.length + 1) + "\t正文内容第" + i + "行"); lines.push(""); }
+  lines.push((lines.length + 1) + "\t2026-11-10 00:11:11 [ERROR] 服务启动失败");
+  assert.equal(looksLikeDocumentDump(lines.join("\n")), true);
+});
 await t("skipInfo 记录 doc-dump 原因", async () => {
   const cfg = resolveConfig();
   const narrative = "# 总览\n" + Array.from({ length: 30 }, (_, i) =>
