@@ -26,3 +26,6 @@ __pycache__/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Qoder 会话统计产物（credits-inspector 插件生成，非项目文件）
+.qoder-credits/
