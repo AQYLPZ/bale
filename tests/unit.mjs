@@ -6,6 +6,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { writeFileSync, unlinkSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
@@ -571,6 +573,109 @@ await t("retrieve 后同内容不再压缩，不同内容仍压缩", async () =>
   const other = bigLog(3001) + "\nT2-other-unique-marker";
   const d2 = await maybeCompress({ name: "pwsh" }, mkResult(other), cfg);
   assert.ok(d2, "不同内容仍应压缩");
+});
+
+// ── sample_lines / force 单测（仓库模块级，不经过 8797）──────────────────────
+// 为什么不能用 HTTP：8797 跑的是部署副本，不含仓库未部署的改动；
+// 这几条断言的是 sample_lines 内部行为（omitted / crit / room 裁剪），
+// 必须直接 import 仓库的 sidecar/sidecar.py。
+const PY_CANDIDATES = [
+  process.env.HEADROOM_TEST_PYTHON,
+  "D:/DSH-Home/.dsh/profiles/desktop/.headroom/venv/Scripts/python.exe",
+  "C:/Users/TTTT/miniconda3/python.exe",
+  "python",
+].filter(Boolean);
+
+const SIDECAR_PY = fileURLToPath(new URL("../sidecar/sidecar.py", import.meta.url));
+
+/** 在子进程里 import 仓库 sidecar.py 并执行 expr，返回其 stdout 解析出的 JSON。 */
+function pyEval(script) {
+  for (const py of PY_CANDIDATES) {
+    const r = spawnSync(py, ["-I", "-c", script], {
+      encoding: "utf8",
+      timeout: 120000,
+      env: { ...process.env, HEADROOM_STORE_DIR: tmpdir() + "/bale_test_store" },
+    });
+    if (r.error) continue;                       // 解释器不存在，试下一个
+    if (r.status !== 0) {
+      throw new Error(`python 失败(${py}) exit=${r.status}\n${r.stderr || r.stdout}`);
+    }
+    const last = r.stdout.trim().split("\n").filter(Boolean).pop();
+    return JSON.parse(last);
+  }
+  throw new Error("找不到可用的 python 解释器");
+}
+
+/** 构造 n 行、每行 width 字符的定长日志（\\n 连接，无尾换行）。 */
+const fixedLog = (n, width) => Array.from({ length: n }, (_, i) => {
+  const head = `2026-11-06 00:00:00 INFO worker step=${i} ok `;
+  return head + "x".repeat(Math.max(0, width - head.length));
+}).join("\n");
+
+console.log("== sample_lines / force（仓库模块级） ==");
+await t("force=True 且 n=100/width=78 -> omitted=51 且含省略标记", async () => {
+  const src = fixedLog(100, 78);
+  const r = pyEval(`
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("s", r"${SIDECAR_PY}")
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+t = ${JSON.stringify(src)}
+out, omitted = m.sample_lines(t, force=True)
+print(json.dumps({"omitted": omitted, "out_len": len(out), "has_marker": ("省略" in out)}))
+`);
+  assert.equal(r.omitted, 51, `omitted 应为 51，实际 ${r.omitted}`);
+  assert.equal(r.has_marker, true, "输出必须含「省略」标记");
+});
+
+await t("关键行 idx=40（stack-frame）-> 保留且 header 关键行=1", async () => {
+  const key = '   File "C:\\app\\a.py", line 40, in handler';
+  const lines = fixedLog(100, 78).split("\n");
+  lines[40] = key.padEnd(78, "x").slice(0, 78);
+  const r = pyEval(`
+import importlib.util, json, re
+spec = importlib.util.spec_from_file_location("s", r"${SIDECAR_PY}")
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+t = ${JSON.stringify(lines.join("\n"))}
+out, omitted = m.sample_lines(t, force=True)
+hdr = out.split("\\n")[0]
+mm = re.search(r"关键行 (\\d+)", hdr)
+print(json.dumps({
+  "omitted": omitted,
+  "kept_key": ${JSON.stringify(key)} in out,
+  "hdr_crit": int(mm.group(1)) if mm else None,
+  "header": hdr[:80],
+}))
+`);
+  assert.equal(r.kept_key, true, "关键行必须保留在输出中");
+  assert.equal(r.hdr_crit, 1, `header 关键行应为 1，实际 ${r.hdr_crit}`);
+});
+
+await t("密集关键行（中间区 51 行全 stack-frame）-> kept>=5 不销毁", async () => {
+  const lines = fixedLog(100, 78).split("\n");
+  for (let i = 33; i <= 83; i++) {
+    lines[i] = `  File "C:\\app\\mod.py", line ${i}, in handler`.padEnd(78, "x").slice(0, 78);
+  }
+  const r = pyEval(`
+import importlib.util, json, re
+spec = importlib.util.spec_from_file_location("s", r"${SIDECAR_PY}")
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+t = ${JSON.stringify(lines.join("\n"))}
+code, b = m.do_compress({"text": t, "no_store": True})
+out = b.get("text") or ""
+body = [x for x in out.split("\\n") if x.strip()]
+hdr = body[0] if body else ""
+mm = re.search(r"关键行 (\\d+)", hdr)
+print(json.dumps({
+  "kept": len(body),
+  "went_force": hdr.startswith("[headroom] 压缩视图"),
+  "hdr_crit": int(mm.group(1)) if mm else None,
+  "compressed": b.get("compressed"),
+}))
+`);
+  assert.ok(r.went_force, "密集关键行场景必须走 force 路径（输出首行应为压缩视图）");
+  assert.ok(r.kept >= 5, `kept 应 >= 5（不销毁），实际 ${r.kept}`);
+  assert.ok(r.hdr_crit >= 28 && r.hdr_crit <= 34,
+    `中间区 51 行应保留约 31 行，实际 ${r.hdr_crit}`);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

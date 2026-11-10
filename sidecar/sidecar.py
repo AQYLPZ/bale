@@ -348,6 +348,7 @@ def sample_lines(
     min_omit: int | None = None,
     min_chars: int | None = None,
     crit_budget: int | None = None,
+    force: bool = False,
 ) -> tuple[str, int]:
     """保留【头 N 行 + 中间关键行 + 尾 M 行】，折叠其余。返回 (输出文本, 省略行数)。
 
@@ -367,12 +368,12 @@ def sample_lines(
     min_omit = _SAMPLE_MIN_OMIT if min_omit is None else min_omit
     min_chars = _SAMPLE_MIN_CHARS if min_chars is None else min_chars
 
-    if len(text) < min_chars:
+    if not force and len(text) < min_chars:
         return text, 0
 
     lines = text.splitlines(keepends=True)
     n = len(lines)
-    if n <= head + tail + min_omit:
+    if not force and n <= head + tail + min_omit:
         return text, 0
 
     head_range = set(range(min(head, n)))
@@ -387,6 +388,34 @@ def sample_lines(
 
     kept = head_range | set(crit) | tail_range
     omitted = n - len(kept)
+
+    if force and omitted < max(min_omit, 1):
+        # force 模式（degenerate-fallback）：内容已被压缩器清零，
+        # 此时"折不了/折得太少"不是可接受结果。收缩头尾保证折叠区充足。
+        h2 = max(1, n // 3)
+        t2 = max(1, n // 6)
+        if h2 + t2 < n:
+            head_range = set(range(min(h2, n)))
+            tail_range = set(range(max(n - t2, 0), n))
+            # 收缩后必须【重新从原文提取】关键行：
+            # 收缩前的 crit 已按旧（更大的）头尾区间过滤，33..83 这类
+            # 「旧头尾内有、新头尾外」的关键行已被剔除，仅做交集过滤补不回来。
+            crit = [
+                i for i in extract_critical_line_nums(mid_lines, crit_budget)
+                if i not in head_range and i not in tail_range
+            ]
+            # 重新提取后 crit 可能打满整个中间区（例如 traceback 密集），
+            # 使 omitted 再次 <=0 而退回原文、兜底失效。这里按需要裁掉尾部关键行，
+            # 保证至少折叠 min_omit 行（关键行按原顺序保留靠前的部分）。
+            need = max(min_omit, 1)
+            room = n - len(head_range) - len(tail_range) - need
+            if room < 0:
+                room = 0
+            if len(crit) > room:
+                crit = crit[:room]
+            kept = head_range | set(crit) | tail_range
+            omitted = n - len(kept)
+
     if omitted <= 0:
         return text, 0
 
@@ -812,12 +841,13 @@ def do_compress(payload: dict) -> tuple[int, dict]:
         # 源内容有超过 20 行，但输出保留不到 5 行 → 判为"内容被清空"
         # 加体积条件：JSON 压缩输出天然少行，避免把正常压缩误判成清空。
         if src_lines > 20 and kept_lines < 5 and len(out) < 0.1 * len(decoded):
-            fallback, omitted = sample_lines(decoded)
+            fallback, omitted = sample_lines(decoded, force=True)
             if omitted > 0 and len(fallback) < len(decoded):
                 log({"event": "degenerate-fallback", "kind": kind,
                      "src_lines": src_lines, "kept_before_fallback": kept_lines,
                      "kept_lines_legacy": kept_lines, "fallback_omitted": omitted,
-                     "kept_final": src_lines - omitted})
+                     "kept_final": src_lines - omitted,
+                     "fallback_applied": True})
                 out = fallback
 
     # 日志压缩默认会 dedupe 掉重复 WARN。这里把"源里有、输出里没有"的
