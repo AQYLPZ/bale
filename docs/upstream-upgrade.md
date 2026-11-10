@@ -832,17 +832,17 @@ npm run check && npm run check:py
 
 # 2. 打包（产物名取 package.json 的 name 字段，当前为 bale）
 npm pack
-# 产出 bale-0.1.6.tgz
+# 产出 bale-0.1.7.tgz
 
 # 3. 复制到 profile 的 vendor 目录
-cp bale-0.1.6.tgz /d/DSH-Home/.dsh/profiles/desktop/vendor/
+cp bale-0.1.7.tgz /d/DSH-Home/.dsh/profiles/desktop/vendor/
 
 # 4. 按下面「包名与 profile 安装键」的说明修改 profile
 ```
 
 > **包名与 profile 安装键（改名后必须二选一）**
 >
-> 仓库的 `package.json` name 已是 `bale`，`npm pack` 产出 `bale-0.1.6.tgz`。按本次是否改插件代码分两种情况：
+> 仓库的 `package.json` name 已是 `bale`，`npm pack` 产出 `bale-0.1.7.tgz`。按本次是否改插件代码分两种情况：
 >
 > 1. **只升级 Python wheel，插件代码不变**：不需要执行 5.5–5.7，也不需要重新打包。
 >    保留现有 headroom-auto 0.1.3 安装，只重建 venv（5.4）并重启 DSH。是否升级成功用

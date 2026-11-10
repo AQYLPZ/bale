@@ -176,7 +176,7 @@ venv/bin/python -m pip install --find-links ./vendor/wheels "headroom-ai[code]==
 ```bash
 # 在仓库根目录内；npm pack 会按 package.json 的 files 白名单打包
 npm pack
-# 生成 bale-0.1.6.tgz（内部根目录为 package/，这是 pnpm 能识别的格式）
+# 生成 bale-0.1.7.tgz（内部根目录为 package/，这是 pnpm 能识别的格式）
 ```
 
 把 tgz 放到 profile 的 `vendor/` 目录，然后在 profile 的 `package.json` 里添加：
@@ -184,7 +184,7 @@ npm pack
 ```json
 {
   "dependencies": {
-    "bale": "file:./vendor/bale-0.1.6.tgz"
+    "bale": "file:./vendor/bale-0.1.7.tgz"
   },
   "dsh": {
     "profile": {
@@ -222,7 +222,7 @@ sidecar 会由插件在启动时自动拉起（`pythonw` 无窗口）。验证�
 
 ```bash
 curl http://127.0.0.1:8797/health
-# {"ok": true, "version": "0.1.6", "uptime_s": 12.3, "compressors_loaded": {}, ...}
+# {"ok": true, "version": "0.1.7", "uptime_s": 12.3, "compressors_loaded": {}, ...}
 ```
 
 `compressors_loaded` 初始为空是正常的 —— 压缩器懒加载，第一次用到才载入。
@@ -352,7 +352,7 @@ sidecar 只绑定 `127.0.0.1`，不对外暴露。
 ```json
 {
   "ok": true,
-  "version": "0.1.6",
+  "version": "0.1.7",
   "uptime_s": 1069.4,
   "compressors_loaded": {"log": true, "generic": true},
   "text_model_ready": false,
